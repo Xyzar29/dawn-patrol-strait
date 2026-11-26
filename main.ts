@@ -12,13 +12,26 @@
 // The output directory itself is never removed — the grader mounts it, so
 // only its previous contents are cleared, never the directory.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// The gate reads plain file modes: every output file 0644, every folder 0755,
+// whatever umask the runner happens to have. The output directory itself is
+// a mount the grader owns, so its own mode is left alone — only what this
+// program created inside it is set.
+function fixModes(dir, chmodSelf = true) {
+  if (chmodSelf) chmodSync(dir, 0o755);
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) fixModes(path);
+    else chmodSync(path, 0o644);
+  }
+}
 
 mkdirSync(out, { recursive: true });
 // Clear only the directory's contents, never the directory itself.
@@ -45,7 +58,9 @@ writeFileSync(
     game_max_bytes: 50331648,
     game_path_max_bytes: 1000,
   }),
+  { mode: 0o644 },
 );
+fixModes(out, false);
 
 // A one-line receipt so a local run shows what was handed in.
 console.log(
